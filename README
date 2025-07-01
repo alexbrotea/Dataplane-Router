@@ -1,0 +1,45 @@
+Brotea Florin-Alexandru, 324CA
+
+La inceput, sunt declarate tabelele si structurile de date folosite pentru rutare si ARP. Rtable e citita o singura data, la inceput,
+din fisier, iar tabela ARP este dinamica, construindu-se pe masura ce primesc ARP reply-uri. Pentru pachetele care nu pot fi
+trimise imediat din cauza ca nu stiu MAC-ul destinatiei, am definit o coada (waiting_queue) unde pachetele raman pana se rezolva
+problema cu MAC-ul.
+
+Functia get_best_route am folosit-o, desigur, pentru determinarea celei mai bune rute din tabela, cu ajutorul algoritmului Longest
+Prefix Match. Iau fiecare intrare din tabela de rutare si verific daca prefixul se potriveste cu adresa IP de destinatie. Daca se
+potriveste si prefixul este mai specific decat ce am gasit pana atunci, il retin. La final, returnez ruta cu cel mai lung prefix
+comun.
+
+Pentru ARP, utilizez functia get_arp_entry, care verifica daca am deja inregistrata o adresa MAC pentru un anumit IP. Daca nu gasesc,
+apelez send_arp_request, care consturieste un pachet ARP cu broadcast, seteaza toate campurile necesare si il trimite pe interfata
+corecta. In acelasi timp, pachetul care trebuia sa fie trimis este salvat in coada waiting_queue printr-o structura packet_wait.
+
+Cand primesc un pachet ARP de tip reply, functia send_arp_reply citeste informatia din pachetul original si construieste un reply pe
+baza lui, inversand adresele IP si MAC si setand campurile corecte din header. In acel moment, se adauga IP-ul si MAC-ul in tabela
+dinamica ARP.
+
+Daca primesc un pachet ICMP de tip echo request care este destinat routerului, folosesc functia send_icmp_echo_reply. Acolo copiez
+campurile relevante din pachetul original, inversez adresele IP si MAC, si trimit inapoi un echo reply complet. Se recalculeaza
+astfel checksum pentru IP si ICMP, si apoi se trimite pe link.
+
+Pentru situatii de eroare, am send_icmp_error, care construieste un pachet ICMP special pentru cazuri ca TTL expirat sau destinatie
+inaccesibila. Se construieste un nou header Ethernet si IP, si apoi un mesaj ICMP de tipul cerut. In ICMP includ headerul IP initial
+si primii 8 bytes din pachetul original.
+
+Functia forward_packet actualizeaza adresele MAC in headerul Ethernet si transmite pachetul pe interfata potrivita(desigur, daca
+dispun de MAC-ul destinatiei).
+
+Dupa ce primesc un ARP reply si salvez MAC-ul in tabela, functia try_sending_waiting_packets parcurge coada si verifica daca sunt
+pachete care asteptau acel IP. Daca sunt, le scoate din coada si le transmite cu forward_packet. Daca nu sunt, pachetul este pus inapoi
+in coada si se asteapta in continuare pachetele potrivite.
+
+In main, incep cu validarea argumentelor, citirea tabelei de rutare si initializarea interfetelor. Apoi, se creeaza coada pentru
+pachetele care vor ramane in asteptare din cauza ARP-ului. Dupa ce se termina partea de initializare, programul intra intr-o bucla
+in care asteapta si proceseaza pachete primite de pe fiecare interfata. Daca primesc un pachet ARP, extrag headerul si verific daca este
+vreun request pentru IP-ul potrivit. Daca da, trimit reply. Daca este reply, adaug intrarea in tabela ARP si verific daca am pachete in
+coada care pot fi acum transmise. Daca primesc un pachet IP, verific checksumul si TTL. Daca TTL este 1 sau mai mic, inseamna ca pachetul
+trebuie aruncat si trimit ICMP Time Exceeded catre sursa. Daca adresa de destinatie este chiar IP-ul uneia dintre interfetele bune, iar
+pachetul este ICMP Echo Request, raspund cu un Echo Reply. Daca nu sunt eu receptorul, atunci routerul trebuie sa faca forwsrding.
+Inainte de a trimite pachetul, scad TTL-ul si recalculez checksumul. Apoi caut ruta cea mai buna folosind get_best_route. Daca nu
+exista ruta, trimit ICMP Destination Unreachable. Daca exista ruta, verific daca am adresa MAC de la next-hop in tabela ARP. Daca nu o am,
+trimit ARP request si pun pachetul in coada. Daca am MAC-ul, il trimit direct cu forward_packet.
