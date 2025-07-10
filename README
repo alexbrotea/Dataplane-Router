@@ -1,53 +1,58 @@
-    At the beginning, the tables and data structures used for routing and ARP are declared.
-The routing table is read only once, at startup, from a file, while the ARP table is dynamic,
-being built as ARP replies are received. For packets that cannot be sent immediately due to
-the lack of a destination MAC address, I defined a queue (waiting_queue) where the packets 
-remain until the MAC address issue is resolved.
+**Dataplane Router**
 
-    The get_best_route function is used, of course, to determine the best route from the table,
-using the Longest Prefix Match algorithm. I go through each entry in the routing table and
-check if the prefix matches the destination IP address. If it matches and the prefix is more
-specific than what I've found so far, I store it. At the end, I return the route with the
-longest common prefix.
+At the beginning, the **tables and data structures** used for **routing** and **ARP** are declared.  
+The **routing table** is read only once, at startup, from a file, while the **ARP table** is **dynamic**,  
+being built as ARP replies are received. For packets that cannot be sent immediately due to the lack of a  
+destination MAC address, I defined a **queue** (`waiting_queue`) where the packets remain until the MAC  
+address issue is resolved.  
 
-    For ARP, I use the get_arp_entry function, which checks whether a MAC address is already 
-registered for a given IP. If I don't find it, I call send_arp_request, which constructs a
-broadcast ARP packet, sets all the necessary fields, and sends it on the correct interface.
-At the same time, the packet that was supposed to be sent is saved in the waiting_queue through
-a packet_wait structure.
+The **`get_best_route`** function is used, of course, to determine the best route from the table, using the  
+**Longest Prefix Match** algorithm. I go through each entry in the routing table and check if the prefix  
+matches the destination IP address. If it matches and the prefix is more specific than what I’ve found  
+so far, I store it. At the end, I return the route with the **longest common prefix**.  
 
-    When I receive an ARP reply packet, the send_arp_reply function reads the information from
-the original packet and builds a reply based on it, reversing the IP and MAC addresses and setting
-the correct fields in the header. At that point, the IP and MAC are added to the dynamic ARP table.
+For ARP, I use the **`get_arp_entry`** function, which checks whether a MAC address is already registered  
+for a given IP. If I don’t find it, I call **`send_arp_request`**, which constructs a broadcast ARP packet,  
+sets all the necessary fields, and sends it on the correct interface. At the same time, the packet that  
+was supposed to be sent is saved in the **`waiting_queue`** through a **`packet_wait`** structure.  
 
-    If I receive an ICMP Echo Request packet destined for the router, I use the send_icmp_echo_reply
-function. There, I copy the relevant fields from the original packet, reverse the IP and MAC addresses,
-and send back a complete Echo Reply. The IP and ICMP checksums are recalculated, and then the packet
-is sent on the link.
+When I receive an ARP reply packet, the **`send_arp_reply`** function reads the information from the  
+original packet and builds a reply based on it—reversing the IP and MAC addresses and setting the  
+correct fields in the header. At that point, the IP and MAC are added to the **dynamic ARP table**.  
 
-    For error situations, I use send_icmp_error, which builds a special ICMP packet for cases like
-TTL expired or destination unreachable. A new Ethernet and IP header is constructed, and then an
-ICMP message of the required type. In the ICMP message, I include the original IP header and the
-first 8 bytes of the original packet.
+If I receive an ICMP Echo Request packet destined for the router, I use the **`send_icmp_echo_reply`**  
+function. There, I copy the relevant fields from the original packet, reverse the IP and MAC addresses,  
+and send back a complete Echo Reply. The IP and ICMP checksums are recalculated, and then the packet is  
+sent on the link.  
 
-    The forward_packet function updates the MAC addresses in the Ethernet header and sends the packet
-on the appropriate interface (if the destination MAC address is known, of course).
+For error situations, I use **`send_icmp_error`**, which builds a special ICMP packet for cases like **TTL  
+expired** or **destination unreachable**. A new Ethernet and IP header is constructed, and then an ICMP  
+message of the required type. In the ICMP message, I include the original IP header and the first 8 bytes  
+of the original packet.  
 
-    After receiving an ARP reply and saving the MAC address in the table, the try_sending_waiting_packets
-function goes through the queue and checks if there are packets waiting for that IP. If so, it removes
-them from the queue and sends them using forward_packet. If not, the packet is put back into the queue,
-and the system continues waiting for the appropriate packets.
+The **`forward_packet`** function updates the MAC addresses in the Ethernet header and sends the packet on  
+the appropriate interface (if the destination MAC address is known, of course).  
 
-    In main, I start by validating the arguments, reading the routing table, and initializing the interfaces.
-Then, I create the queue for packets that will wait due to ARP resolution. After the initialization phase is
-complete, the program enters a loop where it waits for and processes packets received from each interface.
-If I receive an ARP packet, I extract the header and check if it is a request for a relevant IP. If so, I
-send a reply. If it is a reply, I add the entry to the ARP table and check whether I have packets in the
-queue that can now be forwarded. If I receive an IP packet, I verify the checksum and TTL. If TTL is 1 or lower,
-the packet must be dropped, and I send an ICMP Time Exceeded message back to the source. If the destination
-address is one of the router's own IPs and the packet is an ICMP Echo Request, I reply with an Echo Reply. If
-I'm not the intended recipient, then the router must perform forwarding. Before sending the packet, I 
-decrement the TTL and recalculate the checksum. Then I look for the best route using get_best_route. If no
-route exists, I send ICMP Destination Unreachable. If a route exists, I check whether I have the next hop's
-MAC address in the ARP table. If I don't, I send an ARP request and place the packet in the queue. If I do
-have the MAC address, I send it directly using forward_packet.
+After receiving an ARP reply and saving the MAC address in the table, the **`try_sending_waiting_packets`**  
+function goes through the queue and checks if there are packets waiting for that IP. If so, it removes them  
+from the queue and sends them using **`forward_packet`**. If not, the packet is put back into the queue, and  
+the system continues waiting for the appropriate packets.  
+
+In **`main`**, I start by validating the arguments, reading the routing table, and initializing the interfaces.  
+Then, I create the queue for packets that will wait due to ARP resolution. After the initialization phase is  
+complete, the program enters a loop where it waits for and processes packets received from each interface.  
+
+- If I receive an **ARP packet**, I extract the header and check if it is a request for a relevant IP. If so,  
+  I send a reply. If it is a reply, I add the entry to the ARP table and check whether I have packets in the  
+  queue that can now be forwarded.  
+
+- If I receive an **IP packet**, I verify the checksum and TTL. If TTL is 1 or lower, the packet must be dropped,  
+  and I send an **ICMP Time Exceeded** message back to the source. If the destination address is one of the  
+  router’s own IPs and the packet is an **ICMP Echo Request**, I reply with an Echo Reply. If I’m not the  
+  intended recipient, then the router must perform forwarding:  
+  1. Decrement the TTL and recalculate the checksum.  
+  2. Look for the best route using **`get_best_route`**.  
+     - If no route exists, send **ICMP Destination Unreachable**.  
+     - If a route exists, check whether I have the next hop’s MAC address in the ARP table.  
+       - If I don’t, send an **ARP request** and place the packet in the queue.  
+       - If I do, send it directly using **`forward_packet`**.  
