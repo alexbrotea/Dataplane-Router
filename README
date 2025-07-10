@@ -45,7 +45,6 @@ complete, the program enters a loop where it waits for and processes packets rec
 - If I receive an **ARP packet**, I extract the header and check if it is a request for a relevant IP. If so,  
   I send a reply. If it is a reply, I add the entry to the ARP table and check whether I have packets in the  
   queue that can now be forwarded.  
-
 - If I receive an **IP packet**, I verify the checksum and TTL. If TTL is 1 or lower, the packet must be dropped,  
   and I send an **ICMP Time Exceeded** message back to the source. If the destination address is one of the  
   router’s own IPs and the packet is an **ICMP Echo Request**, I reply with an Echo Reply. If I’m not the  
